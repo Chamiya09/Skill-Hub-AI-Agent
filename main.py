@@ -148,7 +148,7 @@ async def batch_recommend_jobs(request: BatchRecommendationRequest) -> list[Batc
             BatchJobRecommendationResult(
                 job_id=job.job_id,
                 match_percentage=score,
-                is_recommended=(score >= 80),
+                is_recommended=(score >= 70),
             )
         )
 
