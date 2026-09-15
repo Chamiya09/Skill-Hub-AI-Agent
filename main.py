@@ -33,7 +33,7 @@ class MatchResponse(BaseModel):
 
 @app.get("/health", tags=["Operations"])
 async def health() -> dict[str, str]:
-    return {"status": "healthy"}
+    return {"status": "ok"}
 
 
 @app.post(
