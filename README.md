@@ -1,4 +1,4 @@
-# Quinta AI Agent
+# Skill Hu AI Agent
 
 FastAPI microservice hosting the Groq-powered LangGraph candidate-to-job matching
 and HR policy-auditing workflow.

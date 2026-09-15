@@ -10,7 +10,7 @@ from state import MatchState
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
-    title="Quinta AI Semantic Digital Twin",
+    title="Skill Hu AI Semantic Digital Twin",
     version="1.0.0",
     description="LangGraph-powered real-time candidate-to-job match analysis.",
 )
