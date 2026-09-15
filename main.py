@@ -29,6 +29,8 @@ class MatchResponse(BaseModel):
     strengths: list[str]
     missing_skills: list[str]
     recommendation: str
+    policy_flag: bool
+    policy_feedback: str
 
 
 @app.get("/health", tags=["Operations"])
@@ -44,18 +46,29 @@ async def health() -> dict[str, str]:
 )
 async def analyze_match(request: MatchRequest) -> MatchResponse:
     initial_state: MatchState = {
-        "candidate_skills": request.candidate_skills,
-        "candidate_experience_years": request.candidate_experience_years,
-        "job_requirements": request.job_requirements,
-        "match_percentage": 0,
-        "strengths": [],
-        "missing_skills": [],
-        "recommendation": "",
+        "candidate_data": {
+            "skills": request.candidate_skills,
+            "experience_years": request.candidate_experience_years,
+        },
+        "job_data": {"requirements": request.job_requirements},
+        "match_score": 0,
+        "analysis": "",
+        "policy_flag": False,
+        "policy_feedback": "",
     }
 
     try:
         final_state = await match_graph.ainvoke(initial_state)
-        return MatchResponse.model_validate(final_state)
+        # Preserve the established .NET wire contract while the graph keeps its
+        # richer internal ethics and policy state.
+        return MatchResponse(
+            match_percentage=final_state["match_score"],
+            strengths=[],
+            missing_skills=[],
+            recommendation=final_state["analysis"],
+            policy_flag=final_state["policy_flag"],
+            policy_feedback=final_state["policy_feedback"],
+        )
     except Exception as exc:
         # Keep provider details in service logs without leaking them to API consumers.
         logger.exception("LangGraph candidate-match workflow failed.")
