@@ -140,7 +140,7 @@ def _get_llm() -> ChatGroq:
         raise RuntimeError("GROQ_API_KEY is not configured.")
 
     return ChatGroq(
-        model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+        model=os.getenv("GROQ_MODEL", "openai/gpt-oss-20b"),
         temperature=0,
         max_retries=2,
         timeout=30,
@@ -156,7 +156,7 @@ async def evaluator_node(state: MatchState) -> dict[str, Any]:
     }
     evaluator = _get_llm().with_structured_output(
         EvaluationOutput,
-        method="function_calling",
+        method="json_schema",
     )
     response = await evaluator.ainvoke(
         [
@@ -182,7 +182,7 @@ async def policy_guardrail_node(state: MatchState) -> dict[str, Any]:
     }
     auditor = _get_llm().with_structured_output(
         PolicyAuditOutput,
-        method="function_calling",
+        method="json_schema",
     )
     response = await auditor.ainvoke(
         [
@@ -215,7 +215,7 @@ async def sanitizer_node(state: MatchState) -> dict[str, Any]:
     }
     sanitizer = _get_llm().with_structured_output(
         SanitizedEvaluationOutput,
-        method="function_calling",
+        method="json_schema",
     )
     response = await sanitizer.ainvoke(
         [
