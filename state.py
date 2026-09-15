@@ -1,5 +1,6 @@
 from typing import TypedDict
 
+
 class MatchState(TypedDict):
     """Shared state passed between nodes in the candidate-match graph."""
 
