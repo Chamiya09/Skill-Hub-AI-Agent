@@ -76,3 +76,81 @@ async def analyze_match(request: MatchRequest) -> MatchResponse:
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="The AI match-analysis workflow could not complete.",
         ) from exc
+
+
+class BatchJobItem(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    job_id: str
+    title: str
+    company: str
+    location: str
+    requirements: list[str] = Field(default_factory=list)
+
+
+class BatchRecommendationRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    candidate_skills: list[str] = Field(default_factory=list)
+    candidate_digital_cv: dict[str, Any] = Field(default_factory=dict)
+    jobs: list[BatchJobItem] = Field(default_factory=list)
+
+
+class BatchJobRecommendationResult(BaseModel):
+    job_id: str
+    match_percentage: int = Field(ge=0, le=100)
+    is_recommended: bool
+
+
+@app.post(
+    "/api/ai/batch-recommend",
+    response_model=list[BatchJobRecommendationResult],
+    status_code=status.HTTP_200_OK,
+    tags=["AI Match"],
+)
+async def batch_recommend_jobs(request: BatchRecommendationRequest) -> list[BatchJobRecommendationResult]:
+    """Score candidate against a batch of open jobs using semantic matching."""
+    if not request.jobs:
+        return []
+
+    results: list[BatchJobRecommendationResult] = []
+
+    # Candidate data incorporates both explicit skills list and any extended digital CV data
+    candidate_data = dict(request.candidate_digital_cv)
+    if "skills" not in candidate_data:
+        candidate_data["skills"] = request.candidate_skills
+
+    for job in request.jobs:
+        job_data = {
+            "title": job.title,
+            "company": job.company,
+            "location": job.location,
+            "requirements": job.requirements,
+        }
+
+        initial_state: MatchState = {
+            "candidate_data": candidate_data,
+            "job_data": job_data,
+            "match_score": 0,
+            "analysis": "",
+            "policy_flag": False,
+            "policy_feedback": "",
+        }
+
+        try:
+            final_state = await match_graph.ainvoke(initial_state)
+            score = max(0, min(100, int(final_state.get("match_score", 0))))
+        except Exception as exc:
+            logger.warning("Error evaluating job %s in batch recommendation: %s", job.job_id, exc)
+            score = 0
+
+        results.append(
+            BatchJobRecommendationResult(
+                job_id=job.job_id,
+                match_percentage=score,
+                is_recommended=(score >= 80),
+            )
+        )
+
+    return results
+
