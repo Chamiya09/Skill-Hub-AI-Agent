@@ -21,27 +21,17 @@ app = FastAPI(
 class MatchRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    candidate_skills: list[str] = Field(min_length=1)
-    candidate_experience_years: int = Field(ge=0, le=80)
-    job_requirements: list[str] = Field(min_length=1)
-
-
-class MatchBreakdownResponse(BaseModel):
-    skills: int = Field(ge=0, le=30)
-    experience: int = Field(ge=0, le=25)
-    projects: int = Field(ge=0, le=20)
-    education: int = Field(ge=0, le=15)
-    certifications: int = Field(ge=0, le=10)
+    candidate_data: dict[str, Any]
+    job_data: dict[str, Any]
 
 
 class MatchResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    breakdown: MatchBreakdownResponse
-    match_percentage: int = Field(alias="matchPercentage", ge=0, le=100)
-    strengths: list[str]
-    missing_skills: list[str] = Field(alias="missingSkills")
-    recommendation: str = Field(alias="aiRecommendation")
+    match_percentage: int = Field(alias="MatchPercentage", ge=0, le=100)
+    strengths: list[str] = Field(alias="Strengths")
+    missing_skills: list[str] = Field(alias="MissingSkillGaps")
+    recommendation: str = Field(alias="AiRecommendation")
 
 
 @app.get("/health", tags=["Operations"])
@@ -57,11 +47,8 @@ async def health() -> dict[str, str]:
 )
 async def analyze_match(request: MatchRequest) -> MatchResponse:
     initial_state: MatchState = {
-        "candidate_data": {
-            "skills": request.candidate_skills,
-            "experience_years": request.candidate_experience_years,
-        },
-        "job_data": {"requirements": request.job_requirements},
+        "candidate_data": request.candidate_data,
+        "job_data": request.job_data,
         "match_score": 0,
         "analysis": "",
         "policy_flag": False,
@@ -73,7 +60,6 @@ async def analyze_match(request: MatchRequest) -> MatchResponse:
         # Preserve the established .NET wire contract while the graph keeps its
         # richer internal ethics and policy state.
         return MatchResponse(
-            breakdown=MatchBreakdownResponse.model_validate(final_state["breakdown"]),
             match_percentage=final_state["match_score"],
             strengths=final_state.get("strengths", []),
             missing_skills=final_state.get("missing_skills", []),
