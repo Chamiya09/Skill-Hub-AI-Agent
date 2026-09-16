@@ -1,4 +1,6 @@
+import asyncio
 import logging
+from typing import Any
 
 from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
@@ -108,49 +110,55 @@ class BatchJobRecommendationResult(BaseModel):
     status_code=status.HTTP_200_OK,
     tags=["AI Match"],
 )
-async def batch_recommend_jobs(request: BatchRecommendationRequest) -> list[BatchJobRecommendationResult]:
+async def batch_recommend_jobs(
+    request: BatchRecommendationRequest,
+) -> list[BatchJobRecommendationResult]:
     """Score candidate against a batch of open jobs using semantic matching."""
     if not request.jobs:
         return []
-
-    results: list[BatchJobRecommendationResult] = []
 
     # Candidate data incorporates both explicit skills list and any extended digital CV data
     candidate_data = dict(request.candidate_digital_cv)
     if "skills" not in candidate_data:
         candidate_data["skills"] = request.candidate_skills
 
-    for job in request.jobs:
-        job_data = {
-            "title": job.title,
-            "company": job.company,
-            "location": job.location,
-            "requirements": job.requirements,
-        }
+    # Limit concurrency so batches complete quickly without flooding the provider.
+    semaphore = asyncio.Semaphore(3)
 
-        initial_state: MatchState = {
-            "candidate_data": candidate_data,
-            "job_data": job_data,
-            "match_score": 0,
-            "analysis": "",
-            "policy_flag": False,
-            "policy_feedback": "",
-        }
+    async def evaluate_job(job: BatchJobItem) -> BatchJobRecommendationResult:
+        async with semaphore:
+            initial_state: MatchState = {
+                "candidate_data": candidate_data,
+                "job_data": {
+                    "title": job.title,
+                    "company": job.company,
+                    "location": job.location,
+                    "requirements": job.requirements,
+                },
+                "match_score": 0,
+                "analysis": "",
+                "policy_flag": False,
+                "policy_feedback": "",
+            }
 
-        try:
-            final_state = await match_graph.ainvoke(initial_state)
-            score = max(0, min(100, int(final_state.get("match_score", 0))))
-        except Exception as exc:
-            logger.warning("Error evaluating job %s in batch recommendation: %s", job.job_id, exc)
-            score = 0
+            try:
+                final_state = await match_graph.ainvoke(initial_state)
+                score = max(
+                    0,
+                    min(100, int(final_state.get("match_score", 0))),
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Error evaluating job %s in batch recommendation: %s",
+                    job.job_id,
+                    exc,
+                )
+                score = 0
 
-        results.append(
-            BatchJobRecommendationResult(
+            return BatchJobRecommendationResult(
                 job_id=job.job_id,
                 match_percentage=score,
-                is_recommended=(score >= 70),
+                is_recommended=(score >= 80),
             )
-        )
 
-    return results
-
+    return list(await asyncio.gather(*(evaluate_job(job) for job in request.jobs)))
