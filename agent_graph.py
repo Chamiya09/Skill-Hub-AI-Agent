@@ -10,10 +10,12 @@ from langchain_groq import ChatGroq
 from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from groq import RateLimitError
+from dotenv import load_dotenv
 
 from state import MatchState
 
 
+load_dotenv()
 logger = logging.getLogger(__name__)
 
 class EvaluationOutput(BaseModel):
