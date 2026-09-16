@@ -1,4 +1,4 @@
-from typing import Any, TypedDict
+from typing import Any, NotRequired, TypedDict
 
 
 class MatchState(TypedDict):
@@ -8,5 +8,9 @@ class MatchState(TypedDict):
     job_data: dict[str, Any]
     match_score: int
     analysis: str
+    breakdown: NotRequired[dict[str, int]]
+    strengths: NotRequired[list[str]]
+    missing_skills: NotRequired[list[str]]
+    ai_recommendation: NotRequired[str]
     policy_flag: bool
     policy_feedback: str

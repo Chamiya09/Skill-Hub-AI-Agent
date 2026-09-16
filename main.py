@@ -26,13 +26,20 @@ class MatchRequest(BaseModel):
     job_requirements: list[str] = Field(min_length=1)
 
 
+class MatchBreakdownResponse(BaseModel):
+    skills: int = Field(ge=0, le=40)
+    experience: int = Field(ge=0, le=35)
+    projects: int = Field(ge=0, le=25)
+
+
 class MatchResponse(BaseModel):
-    match_percentage: int = Field(ge=0, le=100)
+    model_config = ConfigDict(populate_by_name=True)
+
+    breakdown: MatchBreakdownResponse
+    match_percentage: int = Field(alias="matchPercentage", ge=0, le=100)
     strengths: list[str]
-    missing_skills: list[str]
-    recommendation: str
-    policy_flag: bool
-    policy_feedback: str
+    missing_skills: list[str] = Field(alias="missingSkills")
+    recommendation: str = Field(alias="aiRecommendation")
 
 
 @app.get("/health", tags=["Operations"])
@@ -64,12 +71,11 @@ async def analyze_match(request: MatchRequest) -> MatchResponse:
         # Preserve the established .NET wire contract while the graph keeps its
         # richer internal ethics and policy state.
         return MatchResponse(
+            breakdown=MatchBreakdownResponse.model_validate(final_state["breakdown"]),
             match_percentage=final_state["match_score"],
-            strengths=[],
-            missing_skills=[],
-            recommendation=final_state["analysis"],
-            policy_flag=final_state["policy_flag"],
-            policy_feedback=final_state["policy_feedback"],
+            strengths=final_state.get("strengths", []),
+            missing_skills=final_state.get("missing_skills", []),
+            recommendation=final_state.get("ai_recommendation", final_state["analysis"]),
         )
     except Exception as exc:
         # Keep provider details in service logs without leaking them to API consumers.
