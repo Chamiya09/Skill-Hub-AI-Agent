@@ -27,9 +27,11 @@ class MatchRequest(BaseModel):
 
 
 class MatchBreakdownResponse(BaseModel):
-    skills: int = Field(ge=0, le=40)
-    experience: int = Field(ge=0, le=35)
-    projects: int = Field(ge=0, le=25)
+    skills: int = Field(ge=0, le=30)
+    experience: int = Field(ge=0, le=25)
+    projects: int = Field(ge=0, le=20)
+    education: int = Field(ge=0, le=15)
+    certifications: int = Field(ge=0, le=10)
 
 
 class MatchResponse(BaseModel):
