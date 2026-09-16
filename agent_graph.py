@@ -9,6 +9,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_groq import ChatGroq
 from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from groq import RateLimitError
 
 from state import MatchState
 
@@ -211,15 +212,15 @@ def _redact_sensitive_data(value: Any) -> Any:
     return value
 
 
-@lru_cache(maxsize=1)
-def _get_llm() -> ChatGroq:
+@lru_cache(maxsize=2)
+def _get_llm(model_name: str | None = None) -> ChatGroq:
     """Create one reusable Groq client per worker; ChatGroq reads GROQ_API_KEY."""
 
     if not os.getenv("GROQ_API_KEY"):
         raise RuntimeError("GROQ_API_KEY is not configured.")
 
     return ChatGroq(
-        model=os.getenv("GROQ_MODEL", "openai/gpt-oss-20b"),
+        model=model_name or os.getenv("GROQ_MODEL", "openai/gpt-oss-20b"),
         temperature=0.0,
         # Retrying a daily-token 429 immediately only consumes latency and can
         # amplify traffic. The graph supplies a controlled fallback instead.
@@ -239,26 +240,50 @@ async def evaluator_node(state: MatchState) -> dict[str, Any]:
         "target_job_profile": safe_job,
     }
 
-    evaluator = _get_llm().with_structured_output(
-        EvaluationOutput,
-        method="json_schema",
-    )
+    messages = [
+        SystemMessage(content=EVALUATOR_PROMPT),
+        HumanMessage(
+            content=(
+                "Evaluate the following Candidate Digital CV against the Target Job Profile. "
+                "Apply the mandatory Skills (40), Experience (30), and Projects (30) "
+                "rubric before calculating matchPercentage. Return only the required JSON:\n\n"
+                + json.dumps(eval_payload, ensure_ascii=False, indent=2, sort_keys=True)
+            )
+        ),
+    ]
+
+    async def evaluate_with(model_name: str | None = None) -> EvaluationOutput:
+        evaluator = _get_llm(model_name).with_structured_output(
+            EvaluationOutput,
+            method="json_schema",
+        )
+        response = await evaluator.ainvoke(messages)
+        return EvaluationOutput.model_validate(response)
 
     try:
-        response = await evaluator.ainvoke(
-            [
-                SystemMessage(content=EVALUATOR_PROMPT),
-                HumanMessage(
-                    content=(
-                        "Evaluate the following Candidate Digital CV against the Target Job Profile. "
-                        "Apply the mandatory Skills (40), Experience (30), and Projects (30) "
-                        "rubric before calculating matchPercentage. Return only the required JSON:\n\n"
-                        + json.dumps(eval_payload, ensure_ascii=False, indent=2, sort_keys=True)
-                    )
-                ),
-            ]
-        )
-        evaluation = EvaluationOutput.model_validate(response)
+        evaluation = await evaluate_with()
+    except RateLimitError as primary_error:
+        fallback_model = os.getenv("GROQ_FALLBACK_MODEL", "qwen/qwen3.8-27b")
+        primary_model = os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
+        if fallback_model == primary_model:
+            logger.warning("Groq primary model is rate limited: %s", primary_error)
+            evaluation = None
+        else:
+            logger.warning(
+                "Groq model %s is rate limited; retrying once with %s.",
+                primary_model,
+                fallback_model,
+            )
+            try:
+                evaluation = await evaluate_with(fallback_model)
+            except Exception as fallback_error:
+                logger.warning("Groq fallback model unavailable: %s", fallback_error)
+                evaluation = None
+    except Exception as exception:
+        logger.warning("Groq evaluator unavailable: %s", exception)
+        evaluation = None
+
+    if evaluation is not None:
         return {
             "match_score": evaluation.matchPercentage,
             "analysis": evaluation.aiRecommendation,
@@ -266,18 +291,14 @@ async def evaluator_node(state: MatchState) -> dict[str, Any]:
             "missing_skills": evaluation.missingSkills,
             "ai_recommendation": evaluation.aiRecommendation,
         }
-    except Exception as exception:
-        logger.warning(
-            "Groq evaluator unavailable; returning a controlled advisory fallback: %s",
-            exception,
-        )
-        return {
-            "match_score": 0,
-            "analysis": "Evaluation could not be completed automatically. Recruiter manual review required.",
-            "strengths": [],
-            "missing_skills": [],
-            "ai_recommendation": "Evaluation could not be completed automatically. Recruiter manual review required.",
-        }
+
+    return {
+        "match_score": 0,
+        "analysis": "Evaluation could not be completed automatically. Recruiter manual review required.",
+        "strengths": [],
+        "missing_skills": [],
+        "ai_recommendation": "Evaluation could not be completed automatically. Recruiter manual review required.",
+    }
 
 
 async def policy_guardrail_node(state: MatchState) -> dict[str, Any]:
