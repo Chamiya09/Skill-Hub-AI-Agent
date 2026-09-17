@@ -21,27 +21,30 @@ logger = logging.getLogger(__name__)
 class EvaluationOutput(BaseModel):
     """Structured output produced by the technical evaluator."""
 
-    model_config = ConfigDict(extra="forbid")
+    step_by_step_reasoning: str = Field(
+        min_length=1,
+        description="Explicitly write down the math and reasoning before giving the final score. Calculate each sub-score transparently based on evidence."
+    )
 
     matchPercentage: int = Field(ge=0, le=100)
     strengths: list[str]
     missingSkills: list[str]
     aiRecommendation: str = Field(min_length=1)
-    # Structured breakdown keyed by the five weighted categories.
+    # Structured breakdown keyed by the weighted categories.
     # This is the authoritative source for the final score; the model_validator
     # re-derives matchPercentage from it so the text field is never trusted.
     breakdown: dict[str, int] = Field(
         default_factory=dict,
-        description="Per-category scores: skills(30), experience(25), projects(20), education(15), certifications(10).",
+        description="Per-category scores: skills(40), experience(30), projects(20), education(10), certifications(0).",
     )
 
     # Rubric maximums — used to validate individual component caps.
     _RUBRIC: dict[str, int] = {
-        "skills": 30,
-        "experience": 25,
+        "skills": 40,
+        "experience": 30,
         "projects": 20,
-        "education": 15,
-        "certifications": 10,
+        "education": 10,
+        "certifications": 0,
     }
 
     @model_validator(mode="after")
@@ -92,44 +95,37 @@ MANDATORY EVALUATION PROCESS:
 You MUST read BOTH the Candidate JSON and the Job JSON thoroughly. Do NOT guess the
 score. Evaluate each category in order, assign an integer point value, then sum them.
 
-Use this exact weighted rubric. The five component scores are already weighted point
-allocations and MUST NOT be weighted a second time:
+Directive 1: Word-by-Word Semantic Analysis
+DO NOT use basic keyword matching. You must read the entire Job Description and the entire Candidate Digital CV word-for-word. Understand the context. If a job requires 3 years of React, and the CV just mentions 'React' in a 1-month bootcamp, you must penalize the score.
 
-1. Skills Match — 0 to 30 points:
+Directive 2: Strict Evidence-Based Scoring (HR Policy)
+You are acting under strict HR compliance regulations. A candidate cannot receive full points for a skill unless they provide semantic evidence (e.g., they used it in a specific project or past role). Unsubstantiated claims must receive low scores.
+
+Directive 3: Holistic Alignment
+Evaluate the actual depth of experience, the scale of the projects, and the educational relevance. Align this strictly with the seniority level requested in the job description.
+
+Use this exact mathematical rubric. You must calculate the final score using this EXACT mathematical rubric out of 100 points:
+
+1. Technical Skills (Max 40 pts)
    - Identify every explicitly required skill in the Job JSON.
    - Award credit in proportion to how many required skills are evidenced in the CV.
-   - Accept clear semantic equivalents, but do not treat loosely related technologies as
-     exact matches.
-   - A skill appearing only as an unsupported keyword may receive partial, not full,
-     credit.
+   - Accept clear semantic equivalents, but do not treat loosely related technologies as exact matches.
 
-2. Experience Match — 0 to 25 points:
+2. Relevant Experience (Max 30 pts)
    - Compare documented years of relevant experience with the job's required years.
-   - Evaluate relevant domain knowledge, responsibilities, seniority, and demonstrated
-     professional impact.
-   - Do not invent durations or domain experience that the CV does not document.
+   - Evaluate relevant domain knowledge, responsibilities, seniority, and demonstrated professional impact.
 
-3. Projects / Practical Application — 0 to 20 points:
-   - Evaluate whether documented projects demonstrate hands-on use of the required
-     technology stack.
-   - Give stronger credit to concrete implementations, architecture, outcomes, and
-     repositories than to unsupported skill claims.
-   - Do not invent projects or technical usage not present in the CV.
+3. Projects / Portfolio (Max 20 pts)
+   - Evaluate whether documented projects demonstrate hands-on use of the required technology stack.
+   - Give stronger credit to concrete implementations, architecture, outcomes, and repositories than to unsupported skill claims.
 
-4. Education — 0 to 15 points:
+4. Education & Certifications (Max 10 pts)
    - Evaluate whether the candidate's educational background meets the job requirements.
-   - Consider degree level, field of study, and relevance to the role.
-
-5. Certifications — 0 to 10 points:
-   - Evaluate professional certifications relevant to the job requirements.
-   - Only credit certifications explicitly listed in the CV.
+   - Return this entirely under the "education" key (Max 10) in the breakdown. Return 0 for "certifications".
 
 STRICT SCORING RULES:
-- skills: integer 0–30
-- experience: integer 0–25
-- projects: integer 0–20
-- education: integer 0–15
-- certifications: integer 0–10
+- Before giving the final score, you must explicitly write down the math in 'step_by_step_reasoning'. Calculate each sub-score transparently based on evidence in the CV, sum them up, and output that exact sum as the matchPercentage.
+- breakdown must strictly follow: skills (0-40), experience (0-30), projects (0-20), education (0-10), certifications (0).
 - matchPercentage MUST equal skills + experience + projects + education + certifications.
 - Never estimate matchPercentage independently of those component scores.
 - Identical input evidence must receive identical component scores and final score.
@@ -254,9 +250,8 @@ def _get_llm(model_name: str | None = None) -> ChatGroq:
 
     return ChatGroq(
         model=model_name or os.getenv("GROQ_MODEL", "openai/gpt-oss-20b"),
-        temperature=0.0,
-        # Retrying a daily-token 429 immediately only consumes latency and can
-        # amplify traffic. The graph supplies a controlled fallback instead.
+        temperature=0.0, # ZERO creativity: Forces deterministic, cold calculation
+        model_kwargs={"seed": 42}, # Optional seed for maximum consistency
         max_retries=0,
         timeout=30,
     )
