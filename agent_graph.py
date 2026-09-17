@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-import re
 from functools import lru_cache
 from typing import Any, Literal
 
@@ -28,27 +27,41 @@ class EvaluationOutput(BaseModel):
     strengths: list[str]
     missingSkills: list[str]
     aiRecommendation: str = Field(min_length=1)
+    # Structured breakdown keyed by the five weighted categories.
+    # This is the authoritative source for the final score; the model_validator
+    # re-derives matchPercentage from it so the text field is never trusted.
+    breakdown: dict[str, int] = Field(
+        default_factory=dict,
+        description="Per-category scores: skills(30), experience(25), projects(20), education(15), certifications(10).",
+    )
+
+    # Rubric maximums — used to validate individual component caps.
+    _RUBRIC: dict[str, int] = {
+        "skills": 30,
+        "experience": 25,
+        "projects": 20,
+        "education": 15,
+        "certifications": 10,
+    }
 
     @model_validator(mode="after")
     def enforce_weighted_sum(self) -> "EvaluationOutput":
-        """Derive the final score from the model's bounded rubric components."""
+        """Re-derive matchPercentage from the structured breakdown so it is
+        always consistent, regardless of what the LLM wrote in the text field.
+        """
+        bd = {k.lower(): v for k, v in self.breakdown.items()}
 
-        score_breakdown = re.search(
-            r"Skills:\s*(\d+)/40;\s*Experience:\s*(\d+)/30;\s*Projects:\s*(\d+)/30\.",
-            self.aiRecommendation,
-            flags=re.IGNORECASE,
-        )
-        if score_breakdown is None:
-            raise ValueError("aiRecommendation must include the required score breakdown.")
+        # Validate each component against its maximum.
+        for key, cap in self._RUBRIC.items():
+            if bd.get(key, 0) > cap:
+                raise ValueError(
+                    f"Breakdown component '{key}' exceeds its maximum of {cap}."
+                )
 
-        skills_points, experience_points, projects_points = map(
-            int,
-            score_breakdown.groups(),
-        )
-        if skills_points > 40 or experience_points > 30 or projects_points > 30:
-            raise ValueError("Evaluator component score exceeds its allowed maximum.")
+        if bd:
+            # Trust the structured breakdown; ignore whatever the LLM put in matchPercentage.
+            self.matchPercentage = sum(bd.get(k, 0) for k in self._RUBRIC)
 
-        self.matchPercentage = skills_points + experience_points + projects_points
         return self
 
 
@@ -77,14 +90,12 @@ Digital CV JSON against a Job JSON.
 
 MANDATORY EVALUATION PROCESS:
 You MUST read BOTH the Candidate JSON and the Job JSON thoroughly. Do NOT guess the
-score. Step 1: Analyze Skills and assign a score out of 40. Step 2: Analyze Experience
-and assign a score out of 30. Step 3: Analyze Projects and assign a score out of 30.
-Step 4: Sum the scores to get the final `matchPercentage`.
+score. Evaluate each category in order, assign an integer point value, then sum them.
 
-Use this exact weighted rubric. The three component scores are already weighted point
+Use this exact weighted rubric. The five component scores are already weighted point
 allocations and MUST NOT be weighted a second time:
 
-1. Skills Match — 0 to 40 points:
+1. Skills Match — 0 to 30 points:
    - Identify every explicitly required skill in the Job JSON.
    - Award credit in proportion to how many required skills are evidenced in the CV.
    - Accept clear semantic equivalents, but do not treat loosely related technologies as
@@ -92,24 +103,34 @@ allocations and MUST NOT be weighted a second time:
    - A skill appearing only as an unsupported keyword may receive partial, not full,
      credit.
 
-2. Experience Match — 0 to 30 points:
+2. Experience Match — 0 to 25 points:
    - Compare documented years of relevant experience with the job's required years.
    - Evaluate relevant domain knowledge, responsibilities, seniority, and demonstrated
      professional impact.
    - Do not invent durations or domain experience that the CV does not document.
 
-3. Projects / Practical Application — 0 to 30 points:
+3. Projects / Practical Application — 0 to 20 points:
    - Evaluate whether documented projects demonstrate hands-on use of the required
      technology stack.
    - Give stronger credit to concrete implementations, architecture, outcomes, and
      repositories than to unsupported skill claims.
    - Do not invent projects or technical usage not present in the CV.
 
+4. Education — 0 to 15 points:
+   - Evaluate whether the candidate's educational background meets the job requirements.
+   - Consider degree level, field of study, and relevance to the role.
+
+5. Certifications — 0 to 10 points:
+   - Evaluate professional certifications relevant to the job requirements.
+   - Only credit certifications explicitly listed in the CV.
+
 STRICT SCORING RULES:
-- Let skills_points be an integer from 0 through 40.
-- Let experience_points be an integer from 0 through 30.
-- Let projects_points be an integer from 0 through 30.
-- Calculate matchPercentage = skills_points + experience_points + projects_points.
+- skills: integer 0–30
+- experience: integer 0–25
+- projects: integer 0–20
+- education: integer 0–15
+- certifications: integer 0–10
+- matchPercentage MUST equal skills + experience + projects + education + certifications.
 - Never estimate matchPercentage independently of those component scores.
 - Identical input evidence must receive identical component scores and final score.
 - Use only evidence present in the supplied JSON. Missing or ambiguous evidence receives
@@ -133,10 +154,17 @@ Mandatory compliance constraints:
 Return ONLY one valid JSON object with exactly this schema and no additional keys,
 commentary, Markdown, or code fences:
 {
-  "matchPercentage": <skills_points + experience_points + projects_points>,
+  "matchPercentage": <skills + experience + projects + education + certifications>,
+  "breakdown": {
+    "skills": <0-30>,
+    "experience": <0-25>,
+    "projects": <0-20>,
+    "education": <0-15>,
+    "certifications": <0-10>
+  },
   "strengths": ["<supported strength>", "..."],
   "missingSkills": ["<missing required skill>", "..."],
-  "aiRecommendation": "<component scores and concise evidence-based recommendation>"
+  "aiRecommendation": "<concise evidence-based recommendation supporting human review>"
 }
 """.strip()
 
@@ -235,7 +263,7 @@ def _get_llm(model_name: str | None = None) -> ChatGroq:
 
 
 async def evaluator_node(state: MatchState) -> dict[str, Any]:
-    """Evaluate technical fit with the deterministic 40/30/30 scoring rubric."""
+    """Evaluate technical fit with the deterministic 30/25/20/15/10 scoring rubric."""
 
     safe_candidate = _redact_sensitive_data(state.get("candidate_data", {}))
     safe_job = _redact_sensitive_data(state.get("job_data", {}))
@@ -250,8 +278,9 @@ async def evaluator_node(state: MatchState) -> dict[str, Any]:
         HumanMessage(
             content=(
                 "Evaluate the following Candidate Digital CV against the Target Job Profile. "
-                "Apply the mandatory Skills (40), Experience (30), and Projects (30) "
-                "rubric before calculating matchPercentage. Return only the required JSON:\n\n"
+                "Apply the mandatory Skills (30), Experience (25), Projects (20), "
+                "Education (15), and Certifications (10) rubric. "
+                "Return the required JSON including the 'breakdown' object:\n\n"
                 + json.dumps(eval_payload, ensure_ascii=False, indent=2, sort_keys=True)
             )
         ),
@@ -292,6 +321,7 @@ async def evaluator_node(state: MatchState) -> dict[str, Any]:
         return {
             "match_score": evaluation.matchPercentage,
             "analysis": evaluation.aiRecommendation,
+            "breakdown": {k.lower(): v for k, v in evaluation.breakdown.items()},
             "strengths": evaluation.strengths,
             "missing_skills": evaluation.missingSkills,
             "ai_recommendation": evaluation.aiRecommendation,
@@ -303,6 +333,7 @@ async def evaluator_node(state: MatchState) -> dict[str, Any]:
             "Evaluation could not be completed automatically. "
             "Recruiter manual review required."
         ),
+        "breakdown": {},
         "strengths": [],
         "missing_skills": [],
         "ai_recommendation": (

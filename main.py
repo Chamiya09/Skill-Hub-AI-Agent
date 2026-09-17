@@ -32,6 +32,7 @@ class MatchResponse(BaseModel):
     strengths: list[str] = Field(alias="Strengths")
     missing_skills: list[str] = Field(alias="MissingSkillGaps")
     recommendation: str = Field(alias="AiRecommendation")
+    breakdown: dict[str, int] = Field(alias="Breakdown", default_factory=dict)
 
 
 @app.get("/health", tags=["Operations"])
@@ -64,6 +65,7 @@ async def analyze_match(request: MatchRequest) -> MatchResponse:
             strengths=final_state.get("strengths", []),
             missing_skills=final_state.get("missing_skills", []),
             recommendation=final_state.get("ai_recommendation", final_state["analysis"]),
+            breakdown=final_state.get("breakdown", {}),
         )
     except Exception as exc:
         # Keep provider details in service logs without leaking them to API consumers.
