@@ -27,6 +27,7 @@ class EvaluationOutput(BaseModel):
             "Explicitly write down the math and reasoning before giving the final score. "
             "Calculate each sub-score transparently based on evidence."
         )
+    )
 
     matchPercentage: int = Field(ge=0, le=100)
     strengths: list[str]
@@ -41,6 +42,7 @@ class EvaluationOutput(BaseModel):
             "Per-category scores: skills(40), experience(30), "
             "projects(20), education(10), certifications(0)."
         ),
+    )
 
     # Rubric maximums — used to validate individual component caps.
     _RUBRIC: dict[str, int] = {
