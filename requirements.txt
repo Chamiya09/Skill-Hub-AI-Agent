@@ -1,5 +1,6 @@
 fastapi>=0.115
 uvicorn[standard]>=0.34
 langgraph>=0.6
-langchain-google-genai>=2.1
+langchain-groq>=1.1
 pydantic>=2.10
+python-dotenv>=1.0
