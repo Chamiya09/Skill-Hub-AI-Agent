@@ -23,8 +23,10 @@ class EvaluationOutput(BaseModel):
 
     step_by_step_reasoning: str = Field(
         min_length=1,
-        description="Explicitly write down the math and reasoning before giving the final score. Calculate each sub-score transparently based on evidence."
-    )
+        description=(
+            "Explicitly write down the math and reasoning before giving the final score. "
+            "Calculate each sub-score transparently based on evidence."
+        )
 
     matchPercentage: int = Field(ge=0, le=100)
     strengths: list[str]
@@ -35,8 +37,10 @@ class EvaluationOutput(BaseModel):
     # re-derives matchPercentage from it so the text field is never trusted.
     breakdown: dict[str, int] = Field(
         default_factory=dict,
-        description="Per-category scores: skills(40), experience(30), projects(20), education(10), certifications(0).",
-    )
+        description=(
+            "Per-category scores: skills(40), experience(30), "
+            "projects(20), education(10), certifications(0)."
+        ),
 
     # Rubric maximums — used to validate individual component caps.
     _RUBRIC: dict[str, int] = {
@@ -96,15 +100,21 @@ You MUST read BOTH the Candidate JSON and the Job JSON thoroughly. Do NOT guess 
 score. Evaluate each category in order, assign an integer point value, then sum them.
 
 Directive 1: Word-by-Word Semantic Analysis
-DO NOT use basic keyword matching. You must read the entire Job Description and the entire Candidate Digital CV word-for-word. Understand the context. If a job requires 3 years of React, and the CV just mentions 'React' in a 1-month bootcamp, you must penalize the score.
+DO NOT use basic keyword matching. You must read the entire Job Description and the entire Candidate
+Digital CV word-for-word. Understand the context. If a job requires 3 years of React, and the CV
+just mentions 'React' in a 1-month bootcamp, you must penalize the score.
 
 Directive 2: Strict Evidence-Based Scoring (HR Policy)
-You are acting under strict HR compliance regulations. A candidate cannot receive full points for a skill unless they provide semantic evidence (e.g., they used it in a specific project or past role). Unsubstantiated claims must receive low scores.
+You are acting under strict HR compliance regulations. A candidate cannot receive full points for a
+skill unless they provide semantic evidence (e.g., they used it in a specific project or past role).
+Unsubstantiated claims must receive low scores.
 
 Directive 3: Holistic Alignment
-Evaluate the actual depth of experience, the scale of the projects, and the educational relevance. Align this strictly with the seniority level requested in the job description.
+Evaluate the actual depth of experience, the scale of the projects, and the educational relevance.
+Align this strictly with the seniority level requested in the job description.
 
-Use this exact mathematical rubric. You must calculate the final score using this EXACT mathematical rubric out of 100 points:
+Use this exact mathematical rubric. You must calculate the final score using this EXACT mathematical
+rubric out of 100 points:
 
 1. Technical Skills (Max 40 pts)
    - Let X = Total number of explicitly required skills in the Job JSON.
@@ -124,11 +134,15 @@ Use this exact mathematical rubric. You must calculate the final score using thi
 4. Education & Certifications (Max 10 pts)
    - If candidate meets or exceeds the education/certification requirement, score = 10.
    - If candidate does not meet the requirement, score = 0.
-   - Return this entirely under the "education" key (Max 10) in the breakdown. Return 0 for "certifications".
+   - Return this entirely under the "education" key (Max 10) in the breakdown.
+     Return 0 for "certifications".
 
 STRICT SCORING RULES:
-- Before giving the final score, you must explicitly write down the math in 'step_by_step_reasoning'. Calculate each sub-score transparently based on evidence in the CV, sum them up, and output that exact sum as the matchPercentage.
-- breakdown must strictly follow: skills (0-40), experience (0-30), projects (0-20), education (0-10), certifications (0).
+- Before giving the final score, you must explicitly write down the math in
+  'step_by_step_reasoning'. Calculate each sub-score transparently based on evidence in the CV,
+  sum them up, and output that exact sum as the matchPercentage.
+- breakdown must strictly follow: skills (0-40), experience (0-30), projects (0-20),
+  education (0-10), certifications (0).
 - matchPercentage MUST equal skills + experience + projects + education + certifications.
 - Never estimate matchPercentage independently of those component scores.
 - Identical input evidence must receive identical component scores and final score.
@@ -253,9 +267,9 @@ def _get_llm(model_name: str | None = None) -> ChatGroq:
 
     return ChatGroq(
         model=model_name or os.getenv("GROQ_MODEL", "openai/gpt-oss-20b"),
-        temperature=0.0, # ZERO creativity: Forces deterministic, cold calculation
-        model_kwargs={"seed": 42}, # Optional seed for maximum consistency
-        max_tokens=8192, # Extremely critical for chain-of-thought to avoid token limits
+        temperature=0.0,  # ZERO creativity: Forces deterministic, cold calculation
+        model_kwargs={"seed": 42},  # Optional seed for maximum consistency
+        max_tokens=8192,  # Extremely critical for chain-of-thought to avoid token limits
         max_retries=0,
         timeout=30,
     )
