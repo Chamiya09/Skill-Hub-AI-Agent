@@ -107,20 +107,23 @@ Evaluate the actual depth of experience, the scale of the projects, and the educ
 Use this exact mathematical rubric. You must calculate the final score using this EXACT mathematical rubric out of 100 points:
 
 1. Technical Skills (Max 40 pts)
-   - Identify every explicitly required skill in the Job JSON.
-   - Award credit in proportion to how many required skills are evidenced in the CV.
-   - Accept clear semantic equivalents, but do not treat loosely related technologies as exact matches.
+   - Let X = Total number of explicitly required skills in the Job JSON.
+   - Let Y = Total number of those required skills evidenced in the CV.
+   - Score = (Y / X) * 40. Round to nearest integer. (If X is 0, score is 40).
 
 2. Relevant Experience (Max 30 pts)
-   - Compare documented years of relevant experience with the job's required years.
-   - Evaluate relevant domain knowledge, responsibilities, seniority, and demonstrated professional impact.
+   - Let X = Candidate's documented years of relevant experience.
+   - Let Y = Job's required years of experience.
+   - If X >= Y, score = 30. If X < Y, score = (X / Y) * 30. Round to nearest integer.
 
 3. Projects / Portfolio (Max 20 pts)
-   - Evaluate whether documented projects demonstrate hands-on use of the required technology stack.
-   - Give stronger credit to concrete implementations, architecture, outcomes, and repositories than to unsupported skill claims.
+   - If candidate has 2 or more relevant projects demonstrating the required skills, score = 20.
+   - If candidate has 1 relevant project, score = 10.
+   - If candidate has 0 relevant projects, score = 0.
 
 4. Education & Certifications (Max 10 pts)
-   - Evaluate whether the candidate's educational background meets the job requirements.
+   - If candidate meets or exceeds the education/certification requirement, score = 10.
+   - If candidate does not meet the requirement, score = 0.
    - Return this entirely under the "education" key (Max 10) in the breakdown. Return 0 for "certifications".
 
 STRICT SCORING RULES:
@@ -252,6 +255,7 @@ def _get_llm(model_name: str | None = None) -> ChatGroq:
         model=model_name or os.getenv("GROQ_MODEL", "openai/gpt-oss-20b"),
         temperature=0.0, # ZERO creativity: Forces deterministic, cold calculation
         model_kwargs={"seed": 42}, # Optional seed for maximum consistency
+        max_tokens=8192, # Extremely critical for chain-of-thought to avoid token limits
         max_retries=0,
         timeout=30,
     )
@@ -273,8 +277,8 @@ async def evaluator_node(state: MatchState) -> dict[str, Any]:
         HumanMessage(
             content=(
                 "Evaluate the following Candidate Digital CV against the Target Job Profile. "
-                "Apply the mandatory Skills (30), Experience (25), Projects (20), "
-                "Education (15), and Certifications (10) rubric. "
+                "Apply the mandatory Skills (40), Experience (30), Projects (20), "
+                "Education & Certifications (10) rubric. "
                 "Return the required JSON including the 'breakdown' object:\n\n"
                 + json.dumps(eval_payload, ensure_ascii=False, indent=2, sort_keys=True)
             )
