@@ -25,7 +25,10 @@ class CvEvalState(TypedDict):
     # ── Agent 1 outputs ───────────────────────────────────────────────────
     candidate_name: str
     candidate_skills: list[str]
+    years_of_experience: float
+    frameworks_used: list[str]
     candidate_experience_summary: str
+    project_complexities: str
     candidate_education_summary: str
 
     # ── Agent 2 outputs ───────────────────────────────────────────────────
