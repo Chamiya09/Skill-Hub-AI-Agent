@@ -36,7 +36,7 @@ from langchain_groq import ChatGroq
 from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel, Field, field_validator
 
-from cv_eval_state import CvEvalState
+from .cv_eval_state import CvEvalState
 
 logger = logging.getLogger(__name__)
 

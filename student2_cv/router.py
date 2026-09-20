@@ -7,23 +7,24 @@ router = APIRouter(prefix="/api/student2", tags=["Student 2 - CV Evaluator"])
 class CVEvaluationRequest(BaseModel):
     cv_text: str
     job_description: str
+    required_skills: str
 
 @router.post("/evaluate-cv")
-def evaluate_cv(request: CVEvaluationRequest):
+async def evaluate_cv(request: CVEvaluationRequest):
     """
-    Executes the Multi-Agent LangGraph workflow:
+    Executes the Multi-Agent LangGraph workflow using Groq LLM:
     1. Extractor Agent
     2. Evaluator Agent
     3. Validator Agent
     """
-    # Initialize the LangGraph state with the inputs
     initial_state = {
         "cv_text": request.cv_text,
-        "job_description": request.job_description
+        "job_description": f"{request.job_description}\nRequired Skills: {request.required_skills}"
     }
     
     # Run the multi-agent workflow
-    result_state = cv_eval_graph.invoke(initial_state)
+    result_state = await cv_eval_graph.ainvoke(initial_state)
     
-    # Return the final JSON evaluation report (the updated state)
+    # Returns the state dict directly. 
+    # C# captures: match_score, strengths, missing_skills, recommendation, validation_notes
     return result_state
