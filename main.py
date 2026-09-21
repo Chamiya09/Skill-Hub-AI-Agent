@@ -2,12 +2,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
-# Import the student 2 router
-from student2_cv.router import router as student2_router
+# Import domain agent routers
+from interview_prep_agent.router import router as interview_prep_router
+from cv_evaluator_agent.router import router as cv_evaluator_router
 
 app = FastAPI(
     title="AI Agent Services",
-    description="Python backend with isolated agent modules."
+    description="Enterprise Multi-Agent microservices platform."
 )
 
 # Add CORS middleware so the ASP.NET Core backend can call this API without CORS errors
@@ -19,13 +20,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Register the student routers
-app.include_router(student2_router)
+# Register domain agent routers
+app.include_router(interview_prep_router)
+app.include_router(cv_evaluator_router)
 
 
 @app.get("/")
 def read_root():
     return {"message": "Welcome to the AI Agent Backend!"}
+
+
+@app.get("/health")
+def health_check():
+    return {"status": "healthy", "service": "AI Agent Services"}
 
 
 if __name__ == "__main__":

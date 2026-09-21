@@ -1,8 +1,8 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
-from student2_cv.cv_eval_graph import cv_eval_graph
+from cv_evaluator_agent.cv_eval_graph import cv_eval_graph
 
-router = APIRouter(prefix="/api/student2", tags=["Student 2 - CV Evaluator"])
+router = APIRouter(tags=["CV Evaluator Agent"])
 
 
 class CVEvaluationRequest(BaseModel):
@@ -11,7 +11,8 @@ class CVEvaluationRequest(BaseModel):
     required_skills: str
 
 
-@router.post("/evaluate-cv")
+@router.post("/api/student2/evaluate-cv")
+@router.post("/api/cv-evaluator/evaluate-cv")
 async def evaluate_cv(request: CVEvaluationRequest):
     """
     Executes the Multi-Agent LangGraph workflow using Groq LLM:
