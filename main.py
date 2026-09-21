@@ -22,9 +22,11 @@ app.add_middleware(
 # Register the student routers
 app.include_router(student2_router)
 
+
 @app.get("/")
 def read_root():
     return {"message": "Welcome to the AI Agent Backend!"}
+
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
