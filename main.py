@@ -13,6 +13,7 @@ import uvicorn
 # Import domain agent routers
 from interview_prep_agent.router import router as interview_prep_router
 from cv_evaluator_agent.router import router as cv_evaluator_router
+from skill_assessment_agent.router import router as assessment_agent_router
 
 app = FastAPI(
     title="AI Agent Services",
@@ -31,6 +32,7 @@ app.add_middleware(
 # Register domain agent routers
 app.include_router(interview_prep_router)
 app.include_router(cv_evaluator_router)
+app.include_router(assessment_agent_router)
 
 
 @app.get("/")
