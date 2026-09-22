@@ -28,6 +28,11 @@ Provider: Groq (langchain-groq) — uses GROQ_API_KEY / GROQ_MODEL from env.
 
 import logging
 import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Ensure .env is loaded regardless of invocation path
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_groq import ChatGroq
