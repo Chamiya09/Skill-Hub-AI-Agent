@@ -1,13 +1,13 @@
 """
 tools.py
 ────────────────────────────────────────────────────────────────────────────
-Dedicated, strictly-scoped database lookup tool for the Skill Assessment Agent.
+Dedicated, strictly-scoped job lookup tool for the Skill Assessment Agent.
 Per architecture requirements:
-- Read-only access restricted ONLY to the `JobVacancies` table.
+- Read-only access restricted ONLY to the scoped job vacancy context via ASP.NET Core backend.
 - Accepts a job_id (UUID).
 - Returns ONLY the specific fields relevant to generating a coding assessment:
   job_title, experience_level, department, required_skills, and key_responsibilities.
-- Absolutely NO access to any other tables or arbitrary SQL execution.
+- Absolutely NO direct database credentials or arbitrary database access.
 """
 
 import os
@@ -17,7 +17,7 @@ import html
 import logging
 from pathlib import Path
 from typing import Dict, Any, List
-import psycopg2
+import requests
 from langchain_core.tools import tool
 from dotenv import load_dotenv
 
@@ -85,7 +85,7 @@ def _extract_skills_and_responsibilities(clean_text: str) -> Dict[str, Any]:
 @tool
 def fetch_job_vacancy_context(job_id: str) -> Dict[str, Any]:
     """
-    Fetches job vacancy requirements from the database for assessment question generation.
+    Fetches job vacancy requirements from the backend service for assessment question generation.
     
     Args:
         job_id: The UUID of the job vacancy to look up.
@@ -112,58 +112,45 @@ def fetch_job_vacancy_context(job_id: str) -> Dict[str, Any]:
             "error": f"Invalid job vacancy ID format: '{job_id}'. Expected a valid UUID."
         }
 
-    db_url = os.getenv("DATABASE_URL")
-    if not db_url:
-        logger.error("[Tool] DATABASE_URL environment variable is not configured.")
-        return {
-            "error": "Database connection is not configured on the AI Agent server."
-        }
+    backend_url = os.getenv("BACKEND_API_URL", "http://localhost:5155").rstrip("/")
+    endpoint = f"{backend_url}/api/assessments/internal/job-context/{valid_uuid_str}"
 
-    conn = None
     try:
-        conn = psycopg2.connect(db_url)
-        cur = conn.cursor()
-
-        # Strict read-only query limited strictly to JobVacancies
-        cur.execute(
-            """
-            SELECT "Id", "Title", "ExperienceLevel", "Department", "Description"
-            FROM "JobVacancies"
-            WHERE "Id" = %s
-            LIMIT 1;
-            """,
-            (valid_uuid_str,)
-        )
-        row = cur.fetchone()
-        cur.close()
-
-        if not row:
+        response = requests.get(endpoint, timeout=10)
+        if response.status_code == 404:
             return {
                 "error": f"No job vacancy found with ID: '{valid_uuid_str}'."
             }
+        
+        response.raise_for_status()
+        data = response.json()
 
-        rec_id, title, experience_level, department, raw_description = row
-        clean_text = _clean_html(raw_description or "")
+        rec_id = data.get("jobId") or valid_uuid_str
+        title = data.get("jobTitle") or "Software Engineer"
+        experience_level = data.get("experienceLevel") or "Mid Level"
+        department = data.get("department") or "Engineering"
+        raw_description = data.get("description") or ""
+
+        clean_text = _clean_html(raw_description)
         extracted = _extract_skills_and_responsibilities(clean_text)
 
         return {
             "job_id": str(rec_id),
-            "job_title": title or "Software Engineer",
-            "experience_level": experience_level or "Mid Level",
-            "department": department or "Engineering",
+            "job_title": title,
+            "experience_level": experience_level,
+            "department": department,
             "required_skills": extracted["skills"],
             "key_responsibilities": extracted["responsibilities"],
             "raw_description_text": clean_text
         }
 
-    except Exception as e:
-        logger.error("[Tool] Database query error in fetch_job_vacancy_context: %s", str(e), exc_info=True)
+    except requests.exceptions.RequestException as e:
+        logger.error("[Tool] HTTP request error in fetch_job_vacancy_context: %s", str(e), exc_info=True)
         return {
-            "error": f"Failed to retrieve job vacancy from database: {str(e)}"
+            "error": f"Failed to retrieve job vacancy from backend service: {str(e)}"
         }
-    finally:
-        if conn:
-            try:
-                conn.close()
-            except Exception:
-                pass
+    except Exception as e:
+        logger.error("[Tool] Unexpected error in fetch_job_vacancy_context: %s", str(e), exc_info=True)
+        return {
+            "error": f"Failed to process job vacancy data: {str(e)}"
+        }
