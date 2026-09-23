@@ -26,7 +26,11 @@ from langchain_groq import ChatGroq
 from langchain_core.messages import SystemMessage, HumanMessage
 from pydantic import ValidationError
 
-from skill_assessment_agent.tools import fetch_job_vacancy_context
+from skill_assessment_agent.tools import (
+    _clean_html,
+    _extract_skills_and_responsibilities,
+    fetch_job_vacancy_context,
+)
 from skill_assessment_agent.schemas import (
     GenerateQuestionResponse,
     GeneratedQuestionModel,
@@ -157,7 +161,8 @@ class AssessmentAgent:
     async def generate_question(
         self,
         job_vacancy_id: str,
-        focus_area: Optional[str] = None
+        focus_area: Optional[str] = None,
+        job_context: Optional[Dict[str, Any]] = None
     ) -> GenerateQuestionResponse:
         """
         Executes the single-agent question generation workflow:
@@ -167,8 +172,20 @@ class AssessmentAgent:
         """
         logger.info("[AssessmentAgent] Initiating question generation for job ID: %s", job_vacancy_id)
 
-        # Step 1: Execute single database tool
-        tool_data = fetch_job_vacancy_context.invoke({"job_id": job_vacancy_id})
+        # The .NET backend supplies context when it has already validated the vacancy.
+        if job_context:
+            clean_text = _clean_html(job_context.get("description", ""))
+            extracted = _extract_skills_and_responsibilities(clean_text)
+            tool_data = {
+                "job_id": job_vacancy_id,
+                "job_title": job_context.get("job_title", "Software Engineer"),
+                "experience_level": job_context.get("experience_level", "Mid Level"),
+                "department": job_context.get("department", "Engineering"),
+                "required_skills": extracted["skills"],
+                "key_responsibilities": extracted["responsibilities"],
+            }
+        else:
+            tool_data = fetch_job_vacancy_context.invoke({"job_id": job_vacancy_id})
         if "error" in tool_data:
             logger.error("[AssessmentAgent] Tool returned error: %s", tool_data["error"])
             raise ValueError(tool_data["error"])
@@ -199,17 +216,41 @@ Now generate the single, calibrated coding assessment question tailored for this
 
         # Step 3: Invoke LLM with automatic fallback
         try:
-            ai_response = await self.llm.ainvoke(messages)
+            structured_llm = self.llm.with_structured_output(GenerateQuestionResponse)
+            structured_response = await structured_llm.ainvoke(messages)
+            if isinstance(structured_response, GenerateQuestionResponse):
+                validated_response = structured_response
+            else:
+                validated_response = GenerateQuestionResponse.model_validate(structured_response)
+
+            validated_response.job_vacancy_id = job_vacancy_id
+            validated_response.job_title = validated_response.job_title or job_title
+            validated_response.experience_level = validated_response.experience_level or experience_level
+            validated_response.question.difficulty = "Medium"
+            validated_response.question.points = 100
+            validated_response.question.order = 1
+            if not validated_response.question.id:
+                validated_response.question.id = f"q_{uuid.uuid4().hex[:12]}"
+            logger.info("[AssessmentAgent] Successfully generated structured question '%s' in %s for role '%s'",
+                        validated_response.question.title,
+                        validated_response.selected_language,
+                        validated_response.job_title)
+            return validated_response
         except Exception as e:
-            logger.warning("[AssessmentAgent] Primary model '%s' failed: %s. Falling back to '%s'...",
-                           self.model_name, str(e), self.fallback_model)
-            fallback_llm = ChatGroq(
-                groq_api_key=os.getenv("GROQ_API_KEY"),
-                model_name=self.fallback_model,
-                temperature=self.temperature,
-                max_tokens=2000
-            )
-            ai_response = await fallback_llm.ainvoke(messages)
+            logger.warning("[AssessmentAgent] Structured output with primary model '%s' failed: %s. Falling back to raw JSON parsing...",
+                           self.model_name, str(e))
+            try:
+                ai_response = await self.llm.ainvoke(messages)
+            except Exception as raw_error:
+                logger.warning("[AssessmentAgent] Primary model '%s' failed: %s. Falling back to '%s'...",
+                           self.model_name, str(raw_error), self.fallback_model)
+                fallback_llm = ChatGroq(
+                    groq_api_key=os.getenv("GROQ_API_KEY"),
+                    model_name=self.fallback_model,
+                    temperature=self.temperature,
+                    max_tokens=2000
+                )
+                ai_response = await fallback_llm.ainvoke(messages)
 
         raw_content = ai_response.content
         logger.info("[AssessmentAgent] LLM returned content length: %d, preview: %s",
@@ -257,9 +298,9 @@ Now generate the single, calibrated coding assessment question tailored for this
             if "question" in repaired_dict and isinstance(repaired_dict["question"], dict):
                 if not repaired_dict["question"].get("id"):
                     repaired_dict["question"]["id"] = f"q_{uuid.uuid4().hex[:12]}"
-                parsed_dict["question"]["difficulty"] = "Medium"
-                parsed_dict["question"]["points"] = 100
-                parsed_dict["question"]["order"] = 1
+                repaired_dict["question"]["difficulty"] = "Medium"
+                repaired_dict["question"]["points"] = 100
+                repaired_dict["question"]["order"] = 1
 
             if not repaired_dict.get("job_title"):
                 repaired_dict["job_title"] = job_title

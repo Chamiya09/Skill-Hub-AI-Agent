@@ -51,7 +51,8 @@ async def generate_question_endpoint(request: GenerateQuestionRequest):
         agent = get_agent()
         response = await agent.generate_question(
             job_vacancy_id=request.job_vacancy_id,
-            focus_area=request.focus_area
+            focus_area=request.focus_area,
+            job_context=request.job_context.model_dump() if request.job_context else None
         )
         return response
     except Exception as e:
@@ -60,4 +61,3 @@ async def generate_question_endpoint(request: GenerateQuestionRequest):
             status_code=500,
             detail=f"AI Agent failed to generate assessment challenge: {str(e)}"
         )
-

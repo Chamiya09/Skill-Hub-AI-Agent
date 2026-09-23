@@ -90,6 +90,13 @@ class GeneratedQuestionModel(BaseModel):
     )
 
 
+class JobVacancyContextModel(BaseModel):
+    job_title: str
+    experience_level: str
+    department: str
+    description: str = ""
+
+
 class GenerateQuestionRequest(BaseModel):
     job_vacancy_id: str = Field(
         ...,
@@ -99,6 +106,10 @@ class GenerateQuestionRequest(BaseModel):
         default=None,
         description="Optional HR guidance or emphasis (e.g., data manipulation, string parsing, core logic)."
     )
+    job_context: Optional[JobVacancyContextModel] = Field(
+        default=None,
+        description="Vacancy context already loaded by the .NET backend."
+    )
 
 
 class GenerateQuestionResponse(BaseModel):
@@ -107,4 +118,3 @@ class GenerateQuestionResponse(BaseModel):
     experience_level: str
     selected_language: str
     question: GeneratedQuestionModel
-
