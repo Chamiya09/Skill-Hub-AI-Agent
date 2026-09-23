@@ -52,6 +52,7 @@ async def generate_question_endpoint(request: GenerateQuestionRequest):
         response = await agent.generate_question(
             job_vacancy_id=request.job_vacancy_id,
             focus_area=request.focus_area,
+            difficulty=request.difficulty,
             job_context=request.job_context.model_dump() if request.job_context else None
         )
         return response

@@ -106,6 +106,10 @@ class GenerateQuestionRequest(BaseModel):
         default=None,
         description="Optional HR guidance or emphasis (e.g., data manipulation, string parsing, core logic)."
     )
+    difficulty: Optional[str] = Field(
+        default="Medium",
+        description="Difficulty level of the problem: Easy, Medium, or Hard."
+    )
     job_context: Optional[JobVacancyContextModel] = Field(
         default=None,
         description="Vacancy context already loaded by the .NET backend."

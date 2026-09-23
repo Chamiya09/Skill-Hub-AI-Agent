@@ -162,15 +162,20 @@ class AssessmentAgent:
         self,
         job_vacancy_id: str,
         focus_area: Optional[str] = None,
+        difficulty: Optional[str] = "Medium",
         job_context: Optional[Dict[str, Any]] = None
     ) -> GenerateQuestionResponse:
         """
         Executes the single-agent question generation workflow:
         1. Calls the database tool to get job vacancy context.
         2. Reasons over job technical requirements and environment constraints.
-        3. Generates 1 calibrated moderate coding question with starter code and test cases.
+        3. Generates 1 calibrated coding question with starter code and test cases.
         """
-        logger.info("[AssessmentAgent] Initiating question generation for job ID: %s", job_vacancy_id)
+        target_diff = (difficulty or "Medium").strip().capitalize()
+        if target_diff not in ["Easy", "Medium", "Hard"]:
+            target_diff = "Medium"
+
+        logger.info("[AssessmentAgent] Initiating question generation for job ID: %s (Difficulty: %s)", job_vacancy_id, target_diff)
 
         # The .NET backend supplies context when it has already validated the vacancy.
         if job_context:
@@ -196,6 +201,12 @@ class AssessmentAgent:
         required_skills = tool_data.get("required_skills", [])
         key_responsibilities = tool_data.get("key_responsibilities", [])
 
+        diff_guidelines = {
+            "Easy": "The challenge must be strictly calibrated to an EASY difficulty level. Focus on fundamental logic, direct string/array operations, or straightforward condition handling with O(N) or O(1) time complexity.",
+            "Medium": "The challenge must be strictly calibrated to a MODERATE (Medium) difficulty level. Focus on core problem-solving, algorithmic thinking, and efficient data structures (hash maps, two pointers, sliding window, stacks/queues).",
+            "Hard": "The challenge must be strictly calibrated to an ADVANCED (Hard) difficulty level. Focus on complex algorithmic optimization, multi-step problem solving, dynamic programming, backtracking, or advanced graph/tree manipulation with strict performance constraints."
+        }
+
         full_prompt = f"""{SYSTEM_PROMPT}
 
 ### TARGET JOB REQUISITION DATA (Retrieved from Database):
@@ -204,12 +215,14 @@ class AssessmentAgent:
 - Department: {department}
 - Required Skills & Qualifications: {json.dumps(required_skills, indent=2)}
 - Key Responsibilities: {json.dumps(key_responsibilities, indent=2)}
+- Desired Difficulty Level: {target_diff}
+- Difficulty Directive: {diff_guidelines.get(target_diff, diff_guidelines['Medium'])}
 """
         if focus_area:
             full_prompt += f"\n- HR Specific Focus / Emphasis: {focus_area}\n"
 
         full_prompt += f"""
-Now generate the single, calibrated coding assessment question tailored for this requisition as a strictly valid JSON object matching the required schema with job_vacancy_id = "{job_vacancy_id}". Output ONLY the raw JSON object, no markdown fences, no explanation.
+Now generate the single, {target_diff}-difficulty calibrated coding assessment question tailored for this requisition as a strictly valid JSON object matching the required schema with job_vacancy_id = "{job_vacancy_id}". Output ONLY the raw JSON object, no markdown fences, no explanation.
 """
 
         messages = [HumanMessage(content=full_prompt)]
@@ -226,7 +239,7 @@ Now generate the single, calibrated coding assessment question tailored for this
             validated_response.job_vacancy_id = job_vacancy_id
             validated_response.job_title = validated_response.job_title or job_title
             validated_response.experience_level = validated_response.experience_level or experience_level
-            validated_response.question.difficulty = "Medium"
+            validated_response.question.difficulty = target_diff
             validated_response.question.points = 100
             validated_response.question.order = 1
             if not validated_response.question.id:
@@ -265,7 +278,7 @@ Now generate the single, calibrated coding assessment question tailored for this
             if "question" in parsed_dict and isinstance(parsed_dict["question"], dict):
                 if not parsed_dict["question"].get("id"):
                     parsed_dict["question"]["id"] = f"q_{uuid.uuid4().hex[:12]}"
-                parsed_dict["question"]["difficulty"] = "Medium"
+                parsed_dict["question"]["difficulty"] = target_diff
                 parsed_dict["question"]["points"] = 100
                 parsed_dict["question"]["order"] = 1
 
@@ -298,7 +311,7 @@ Now generate the single, calibrated coding assessment question tailored for this
             if "question" in repaired_dict and isinstance(repaired_dict["question"], dict):
                 if not repaired_dict["question"].get("id"):
                     repaired_dict["question"]["id"] = f"q_{uuid.uuid4().hex[:12]}"
-                repaired_dict["question"]["difficulty"] = "Medium"
+                repaired_dict["question"]["difficulty"] = target_diff
                 repaired_dict["question"]["points"] = 100
                 repaired_dict["question"]["order"] = 1
 
