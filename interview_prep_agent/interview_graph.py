@@ -10,9 +10,11 @@ Chains:
 
 import logging
 import os
+from pathlib import Path
 import re
 import uuid
 from typing import Any, Dict, List
+from dotenv import load_dotenv
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_groq import ChatGroq
@@ -29,6 +31,9 @@ from interview_prep_agent.schemas import (
     StudyFocusArea,
 )
 from interview_prep_agent.state import InterviewGuideState
+
+# Ensure .env is loaded
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 logger = logging.getLogger(__name__)
 
