@@ -23,7 +23,7 @@ from typing import Optional, Dict, Any
 
 from dotenv import load_dotenv
 from langchain_groq import ChatGroq
-from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.messages import HumanMessage
 from pydantic import ValidationError
 
 from skill_assessment_agent.tools import (
@@ -33,9 +33,6 @@ from skill_assessment_agent.tools import (
 )
 from skill_assessment_agent.schemas import (
     GenerateQuestionResponse,
-    GeneratedQuestionModel,
-    TestCaseModel,
-    SupportedLanguage
 )
 
 # Load environment
@@ -250,13 +247,20 @@ Now generate the single, {target_diff}-difficulty calibrated coding assessment q
                         validated_response.job_title)
             return validated_response
         except Exception as e:
-            logger.warning("[AssessmentAgent] Structured output with primary model '%s' failed: %s. Falling back to raw JSON parsing...",
-                           self.model_name, str(e))
+            logger.warning(
+                "[AssessmentAgent] Structured output with primary model '%s' failed: %s. Falling back to raw JSON parsing...",
+                self.model_name,
+                str(e),
+            )
             try:
                 ai_response = await self.llm.ainvoke(messages)
             except Exception as raw_error:
-                logger.warning("[AssessmentAgent] Primary model '%s' failed: %s. Falling back to '%s'...",
-                           self.model_name, str(raw_error), self.fallback_model)
+                logger.warning(
+                    "[AssessmentAgent] Primary model '%s' failed: %s. Falling back to '%s'...",
+                    self.model_name,
+                    str(raw_error),
+                    self.fallback_model,
+                )
                 fallback_llm = ChatGroq(
                     groq_api_key=os.getenv("GROQ_API_KEY"),
                     model_name=self.fallback_model,
