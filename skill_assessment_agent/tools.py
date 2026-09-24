@@ -49,7 +49,7 @@ def _extract_skills_and_responsibilities(clean_text: str) -> Dict[str, Any]:
     and required skills/qualifications sections if present.
     """
     lines = [line.strip() for line in clean_text.split('\n') if line.strip()]
-    
+
     responsibilities: List[str] = []
     skills: List[str] = []
     current_section = "overview"
@@ -86,10 +86,10 @@ def _extract_skills_and_responsibilities(clean_text: str) -> Dict[str, Any]:
 def fetch_job_vacancy_context(job_id: str) -> Dict[str, Any]:
     """
     Fetches job vacancy requirements from the backend service for assessment question generation.
-    
+
     Args:
         job_id: The UUID of the job vacancy to look up.
-        
+
     Returns:
         A dictionary containing:
         - job_id: The vacancy ID.
@@ -101,7 +101,7 @@ def fetch_job_vacancy_context(job_id: str) -> Dict[str, Any]:
         - raw_description_text: Cleaned plain text of the job description for additional context.
     """
     cleaned_id = str(job_id).strip().strip("'").strip('"')
-    
+
     # Validate UUID format to prevent malformed queries
     try:
         uuid_obj = uuid.UUID(cleaned_id)
@@ -121,7 +121,7 @@ def fetch_job_vacancy_context(job_id: str) -> Dict[str, Any]:
             return {
                 "error": f"No job vacancy found with ID: '{valid_uuid_str}'."
             }
-        
+
         response.raise_for_status()
         data = response.json()
 

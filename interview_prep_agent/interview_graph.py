@@ -16,9 +16,6 @@ import uuid
 from typing import Any, Dict, List
 from dotenv import load_dotenv
 
-# Ensure .env is loaded
-load_dotenv(Path(__file__).resolve().parent.parent / ".env")
-
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_groq import ChatGroq
 from langgraph.graph import END, START, StateGraph
@@ -34,6 +31,9 @@ from interview_prep_agent.schemas import (
     StudyFocusArea,
 )
 from interview_prep_agent.state import InterviewGuideState
+
+# Ensure .env is loaded
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 logger = logging.getLogger(__name__)
 
