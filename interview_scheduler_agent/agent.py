@@ -11,6 +11,7 @@ Integrates:
 import os
 import json
 import logging
+from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 from pathlib import Path
 from dotenv import load_dotenv
@@ -95,11 +96,18 @@ class InterviewSchedulerAgent:
         candidates = cand_data.get("candidates", [])
         job_title = cand_data.get("job_title", "Software Engineer")
 
-        # 2. Fetch Blocked Slots from Backend
+        # 2. Fetch Blocked Slots from Backend across full potential window (including forward extension)
+        start_d = datetime.strptime(request.start_date, "%Y-%m-%d").date()
+        end_d = datetime.strptime(request.end_date, "%Y-%m-%d").date()
+        if end_d < start_d:
+            end_d = start_d
+        extended_end_d = end_d + timedelta(days=14)
+        extended_end_str = extended_end_d.strftime("%Y-%m-%d")
+
         blocked_slots = fetch_blocked_slots(
             company_id=request.company_id,
             start_date=request.start_date,
-            end_date=request.end_date
+            end_date=extended_end_str
         )
 
         # 3. Fetch Company Schedule Config (Working Hours)

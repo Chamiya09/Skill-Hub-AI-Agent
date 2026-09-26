@@ -29,13 +29,20 @@ TRACK_ROOM_NAMES = [
 
 
 def time_to_minutes(time_str: str) -> int:
-    """Parses 'HH:mm' string to total minutes since midnight."""
+    """Parses 'HH:mm' or 'h:mm AM/PM' string to total minutes since midnight."""
     clean = time_str.strip()
-    if " " in clean:
-        clean = clean.split(" ")[0]
-    parts = clean.split(":")
+    is_pm = "PM" in clean.upper()
+    is_am = "AM" in clean.upper()
+    num_part = clean.upper().replace("AM", "").replace("PM", "").strip()
+    parts = num_part.split(":")
     hours = int(parts[0])
     minutes = int(parts[1]) if len(parts) > 1 else 0
+
+    if is_pm and hours < 12:
+        hours += 12
+    elif is_am and hours == 12:
+        hours = 0
+
     return hours * 60 + minutes
 
 
@@ -65,14 +72,15 @@ def generate_available_slots_for_date(
     work_start_min: int,
     work_end_min: int,
     blocked_slots_for_date: List[Dict[str, Any]],
-    is_extended: bool = False
+    is_extended: bool = False,
+    allow_weekends: bool = False
 ) -> List[Dict[str, Any]]:
     """
     Generates non-overlapping slots across parallel tracks for a single day,
     filtering out any clashes with existing events or holidays.
     """
-    # Exclude weekends (Saturday = 5, Sunday = 6)
-    if target_date.weekday() >= 5:
+    # Exclude weekends only if allow_weekends is False (Saturday = 5, Sunday = 6)
+    if not allow_weekends and target_date.weekday() >= 5:
         return []
 
     # Check for full-day holiday or full-day block
@@ -190,7 +198,8 @@ def compute_interview_schedule(
             work_start_min=work_start_min,
             work_end_min=work_end_min,
             blocked_slots_for_date=day_blocked,
-            is_extended=False
+            is_extended=False,
+            allow_weekends=True
         )
 
         for slot in slots:
@@ -239,7 +248,8 @@ def compute_interview_schedule(
             work_start_min=work_start_min,
             work_end_min=work_end_min,
             blocked_slots_for_date=day_blocked,
-            is_extended=True
+            is_extended=True,
+            allow_weekends=False
         )
 
         if slots:
@@ -290,14 +300,14 @@ def compute_interview_schedule(
 
     assumptions = [
         f"Working hours configured as {work_start_str} to {work_end_str} with {buffer_min}-minute transition buffer.",
-        "Weekends (Saturday and Sunday) are strictly excluded from interview scheduling.",
+        f"Target dates selected by HR ({start_date_str} to {end_date_str}) prioritized for scheduling.",
         f"Utilized {parallel_tracks} concurrent parallel track(s) per time slot.",
         f"Interview duration set to {duration_min} minutes per candidate."
     ]
     if forward_days_extended > 0:
         assumptions.append(
             f"Forward search automatically extended the schedule window by {forward_days_extended} day(s) "
-            f"to accommodate all candidates without schedule collisions."
+            f"across business weekdays to accommodate all candidates without schedule collisions."
         )
 
     ai_notes = [
