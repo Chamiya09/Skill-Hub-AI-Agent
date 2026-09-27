@@ -9,6 +9,7 @@ import uvicorn
 from interview_prep_agent.router import router as interview_prep_router
 from cv_evaluator_agent.router import router as cv_evaluator_router
 from skill_assessment_agent.router import router as assessment_agent_router
+from interview_scheduler_agent.router import router as interview_scheduler_router
 
 # Explicitly load .env file from the current directory
 env_path = Path(__file__).resolve().parent / ".env"
@@ -32,6 +33,7 @@ app.add_middleware(
 app.include_router(interview_prep_router)
 app.include_router(cv_evaluator_router)
 app.include_router(assessment_agent_router)
+app.include_router(interview_scheduler_router)
 
 
 @app.get("/")
