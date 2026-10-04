@@ -11,10 +11,10 @@ set -euo pipefail
 # ==========================================
 # CONFIGURATION & ENVIRONMENT VARIABLES
 # ==========================================
-RESOURCE_GROUP="TalentMatch-RG"
-LOCATION="eastasia"
-ENVIRONMENT_NAME="cae-skillhub-prod"
-APP_NAME="ca-skillhub-ai-agent"
+RESOURCE_GROUP="${RESOURCE_GROUP:-TalentMatch-RG}"
+LOCATION="${LOCATION:-eastasia}"
+ENVIRONMENT_NAME="${ENVIRONMENT_NAME:-cae-skillhub-prod}"
+APP_NAME="${APP_NAME:-ca-skillhub-ai-agent}"
 
 GITHUB_USERNAME="${GITHUB_USERNAME:-chamiya09}"
 IMAGE_TAG="${1:-${IMAGE_TAG:-latest}}"
