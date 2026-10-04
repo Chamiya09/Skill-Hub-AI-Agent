@@ -31,14 +31,41 @@ MAX_REPLICAS=1
 DEFAULT_BACKEND_URL="https://ca-skillhub-backend.bravebay-18c4a18e.eastasia.azurecontainerapps.io"
 BACKEND_API_URL="${BACKEND_API_URL:-$DEFAULT_BACKEND_URL}"
 
-# Secrets (Prefer passing via environment variables)
-# Example: export GROQ_API_KEY="gsk_..."
+# Secrets — read strictly from the environment, NO hardcoded fallbacks.
+# The validation block below will exit if these are not set.
 GROQ_API_KEY="${GROQ_API_KEY:-}"
 GROQ_MODEL="${GROQ_MODEL:-llama-3.3-70b-versatile}"
 GHCR_TOKEN="${GHCR_PAT:-${GITHUB_TOKEN:-}}"
 
 # ==========================================
-# 1. PREREQUISITES CHECK
+# 1. SECRET VALIDATION (fail fast before any Azure calls)
+# ==========================================
+if [ -z "${GHCR_TOKEN}" ]; then
+    echo "" >&2
+    echo "❌ ERROR: GHCR_PAT (or GITHUB_TOKEN) is not set." >&2
+    echo "" >&2
+    echo "   This variable is required to authenticate with GitHub Container Registry." >&2
+    echo "   Please generate a GitHub Personal Access Token with 'read:packages' scope, then run:" >&2
+    echo "" >&2
+    echo "     export GHCR_PAT=\"ghp_yourTokenHere\"" >&2
+    echo "" >&2
+    exit 1
+fi
+
+if [ -z "${GROQ_API_KEY}" ]; then
+    echo "" >&2
+    echo "❌ ERROR: GROQ_API_KEY is not set." >&2
+    echo "" >&2
+    echo "   This variable is required to configure the AI Agent in Azure Container Apps." >&2
+    echo "   Please generate a key from https://console.groq.com, then run:" >&2
+    echo "" >&2
+    echo "     export GROQ_API_KEY=\"gsk_yourKeyHere\"" >&2
+    echo "" >&2
+    exit 1
+fi
+
+# ==========================================
+# 2. PREREQUISITES CHECK
 # ==========================================
 echo "---------------------------------------------------------"
 echo "🚀 Skill Hub AI Agent: Azure Container App Deployment"
@@ -66,7 +93,7 @@ az extension add --name containerapp --upgrade --yes > /dev/null 2>&1 || true
 az provider register --namespace Microsoft.App --wait > /dev/null 2>&1 || true
 
 # ==========================================
-# 2. RESOURCE GROUP & ENVIRONMENT VERIFICATION
+# 3. RESOURCE GROUP & ENVIRONMENT VERIFICATION
 # ==========================================
 echo "🔎 Checking Resource Group: ${RESOURCE_GROUP}..."
 if ! az group exists --name "${RESOURCE_GROUP}" | grep -q "true"; then
