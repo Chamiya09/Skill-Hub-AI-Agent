@@ -1,0 +1,97 @@
+name: AI Agent Build, Push & Deploy
+
+on:
+  push:
+    branches: ["main", "dev"]
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+
+concurrency:
+  group: ai-build-deploy-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build-push-deploy:
+    name: Build, Publish & Deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      # GHCR requires strictly lowercase repository names (e.g., chamiya09/skill-hub-ai-agent)
+      - name: Resolve Environment & Image Metadata
+        id: meta
+        run: |
+          IMAGE_BASE="${REGISTRY}/${GITHUB_REPOSITORY,,}"
+
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            ENV="prod"
+          else
+            ENV="dev"
+          fi
+
+          TAG="${ENV}-${GITHUB_SHA}"
+          echo "target_env=${ENV}" >> $GITHUB_OUTPUT
+          echo "image_base=${IMAGE_BASE}" >> $GITHUB_OUTPUT
+          echo "image_tag=${TAG}" >> $GITHUB_OUTPUT
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry (GHCR)
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.image_base }}:${{ steps.meta.outputs.image_tag }}
+            ${{ steps.meta.outputs.image_base }}:${{ steps.meta.outputs.target_env }}-latest
+            ${{ steps.meta.outputs.target_env == 'prod' && format('{0}:latest', steps.meta.outputs.image_base) || '' }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Authenticate with Azure using Service Principal credentials
+      - name: Log in to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      # Execute production deployment script to Azure Container Apps
+      - name: Deploy to Azure Container Apps
+        run: |
+          chmod +x scripts/deploy-ai-agent.sh
+
+          if [ "${{ steps.meta.outputs.target_env }}" = "prod" ]; then
+            export ENVIRONMENT_NAME="cae-skillhub-prod"
+            export APP_NAME="ca-skillhub-ai-agent-prod"
+            export GROQ_API_KEY="${{ secrets.GROQ_API_KEY_PROD || secrets.GROQ_API_KEY }}"
+            export BACKEND_API_URL="${{ vars.BACKEND_API_URL_PROD || 'https://ca-skillhub-backend.bravebay-18c4a18e.eastasia.azurecontainerapps.io' }}"
+          else
+            export ENVIRONMENT_NAME="cae-skillhub-dev"
+            export APP_NAME="ca-skillhub-ai-agent-dev"
+            export GROQ_API_KEY="${{ secrets.GROQ_API_KEY_DEV || secrets.GROQ_API_KEY }}"
+            export BACKEND_API_URL="${{ vars.BACKEND_API_URL_DEV || 'https://ca-skillhub-backend-dev.bravebay-18c4a18e.eastasia.azurecontainerapps.io' }}"
+          fi
+
+          export RESOURCE_GROUP="TalentMatch-RG"
+          export LOCATION="eastasia"
+          export GITHUB_USERNAME="${{ github.repository_owner }}"
+          export GHCR_PAT="${{ secrets.GITHUB_TOKEN }}"
+
+          ./scripts/deploy-ai-agent.sh "${{ steps.meta.outputs.image_tag }}"
