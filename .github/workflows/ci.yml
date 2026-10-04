@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ai-ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -35,7 +35,7 @@ jobs:
         run: |
           # Stop the build if there are Python syntax errors or undefined names
           python -m flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-          # Exit-zero treats all style warnings without breaking the build
+          # Exit-zero treats all formatting style warnings without failing the build
           python -m flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 
       - name: Smoke Test FastAPI App Initialization
@@ -44,5 +44,5 @@ jobs:
 
       - name: Run Pytest
         run: |
-          # Run tests; if no test files exist yet (pytest exit code 5), don't fail the CI run
+          # Run unit tests; exit code 5 (no tests found) will not fail the CI run
           python -m pytest || [ $? -eq 5 ]
