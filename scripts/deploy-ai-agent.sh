@@ -12,9 +12,9 @@ set -euo pipefail
 # CONFIGURATION & ENVIRONMENT VARIABLES
 # ==========================================
 RESOURCE_GROUP="${RESOURCE_GROUP:-TalentMatch-RG}"
-LOCATION="${LOCATION:-eastasia}"
-ENVIRONMENT_NAME="${ENVIRONMENT_NAME:-cae-skillhub-prod}"
-APP_NAME="${APP_NAME:-ca-skillhub-ai-agent}"
+LOCATION="${LOCATION:-malaysiawest}"
+ENVIRONMENT_NAME="${ENVIRONMENT_NAME:-cae-skillhub-my}"
+APP_NAME="${APP_NAME:-ca-skillhub-ai-agent-my}"
 
 GITHUB_USERNAME="${GITHUB_USERNAME:-chamiya09}"
 IMAGE_TAG="${1:-${IMAGE_TAG:-latest}}"
@@ -30,6 +30,16 @@ MAX_REPLICAS=1
 # Default backend URL in Azure Container Apps
 DEFAULT_BACKEND_URL="https://ca-skillhub-backend.bravebay-18c4a18e.eastasia.azurecontainerapps.io"
 BACKEND_API_URL="${BACKEND_API_URL:-$DEFAULT_BACKEND_URL}"
+
+# Auto-load secrets from .env if present
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+if [ -f "${ROOT_DIR}/.env" ]; then
+    set -a
+    # shellcheck disable=SC1091
+    . "${ROOT_DIR}/.env"
+    set +a
+fi
 
 # Secrets — read strictly from the environment, NO hardcoded fallbacks.
 # The validation block below will exit if these are not set.
@@ -184,7 +194,35 @@ if [ -z "${APP_EXISTS}" ]; then
         --env-vars "${ENV_VARS_ARGS[@]}" \
         --output table
 else
-    echo "🔄 Container App already exists. Updating container image and environment..."
+    # Check if the existing app belongs to the target environment / region
+    EXISTING_ENV_ID=$(az containerapp show \
+        --name "${APP_NAME}" \
+        --resource-group "${RESOURCE_GROUP}" \
+        --query "properties.environmentId" -o tsv 2>/dev/null || true)
+
+    if [[ -n "${EXISTING_ENV_ID}" && "${EXISTING_ENV_ID}" != *"/managedEnvironments/${ENVIRONMENT_NAME}"* ]]; then
+        echo "" >&2
+        echo "❌ CONFLICT DETECTED: Container App '${APP_NAME}' already exists in another environment." >&2
+        echo "   Current Environment:  ${EXISTING_ENV_ID##*/}" >&2
+        echo "   Target Environment:   ${ENVIRONMENT_NAME} (${LOCATION})" >&2
+        echo "" >&2
+        echo "   Azure requires unique app names within the same resource group ('${RESOURCE_GROUP}')." >&2
+        echo "   Because Azure Container Apps cannot change regions/environments in-place," >&2
+        echo "   choose one of these options:" >&2
+        echo "" >&2
+        echo "   Option 1 (Clean Migration):" >&2
+        echo "     Delete the old app in East Asia first, then re-run this script:" >&2
+        echo "       az containerapp delete --name ${APP_NAME} --resource-group ${RESOURCE_GROUP} --yes" >&2
+        echo "" >&2
+        echo "   Option 2 (Zero-Downtime Deployment):" >&2
+        echo "     Deploy under a staged regional name (e.g., '${APP_NAME}-my') first:" >&2
+        echo "       APP_NAME=\"${APP_NAME}-my\" bash scripts/deploy-ai-agent.sh ${IMAGE_TAG}" >&2
+        echo "     Verify the new instance, then delete the old East Asia app." >&2
+        echo "" >&2
+        exit 1
+    fi
+
+    echo "🔄 Container App already exists in ${ENVIRONMENT_NAME}. Updating container image and environment..."
 
     if [ -n "${GHCR_TOKEN}" ]; then
         echo "🔑 Refreshing GHCR registry credentials..."
